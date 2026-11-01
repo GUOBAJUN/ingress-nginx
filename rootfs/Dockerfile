@@ -16,6 +16,9 @@ ARG BASE_IMAGE
 
 FROM ${BASE_IMAGE}
 
+# Optional apk mirror, e.g. mirrors.aliyun.com, for restricted networks.
+ARG APK_MIRROR=""
+
 ARG TARGETARCH
 ARG VERSION
 ARG COMMIT_SHA
@@ -33,11 +36,13 @@ LABEL build_id="${BUILD_ID}"
 
 WORKDIR  /etc/nginx
 
-RUN apk update \
+RUN --mount=type=cache,target=/var/cache/apk,sharing=shared \
+    if [ -n "${APK_MIRROR}" ]; then \
+      sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi \
+  && apk update \
   && apk upgrade \
-  && apk add --no-cache \
-    diffutils \
-  && rm -rf /var/cache/apk/*
+  && apk add --cache-packages --timeout 60 diffutils
 
 COPY --chown=www-data:www-data etc /etc
 
@@ -68,7 +73,8 @@ RUN bash -xeu -c ' \
   && echo "/lib:/usr/lib:/usr/local/lib:/modules_mount/etc/nginx/modules/otel" > /etc/ld-musl-x86_64.path
   
 
-RUN apk add --no-cache libcap \
+RUN --mount=type=cache,target=/var/cache/apk,sharing=shared \
+    apk add --cache-packages --timeout 60 libcap \
   && setcap    cap_net_bind_service=+ep /nginx-ingress-controller \
   && setcap -v cap_net_bind_service=+ep /nginx-ingress-controller \
   && setcap    cap_net_bind_service=+ep /usr/local/nginx/sbin/nginx \

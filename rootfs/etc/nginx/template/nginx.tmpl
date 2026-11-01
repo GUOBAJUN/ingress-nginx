@@ -64,7 +64,7 @@ http {
     opentelemetry_config {{ $cfg.OpentelemetryConfig }};
     {{ end }}
 
-    lua_package_path "/etc/nginx/lua/?.lua;;";
+    lua_package_path "/etc/nginx/lua/?.lua;/usr/local/lib/lua/?.lua;;";
 
     {{ buildLuaSharedDictionaries $cfg $servers }}
 
@@ -724,7 +724,7 @@ http {
 }
 
 stream {
-    lua_package_path "/etc/nginx/lua/?.lua;/etc/nginx/lua/vendor/?.lua;;";
+    lua_package_path "/etc/nginx/lua/?.lua;/etc/nginx/lua/vendor/?.lua;/usr/local/lib/lua/?.lua;;";
 
     lua_shared_dict tcp_udp_configuration_data 5M;
     

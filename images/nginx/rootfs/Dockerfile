@@ -11,17 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-FROM alpine:3.23.3 AS builder
+FROM public.ecr.aws/docker/library/alpine:3.23.7 AS builder
+
+# Optional apk mirror, e.g. mirrors.aliyun.com, for restricted networks.
+ARG APK_MIRROR=""
 
 COPY . /
 
-RUN apk update \
-  && apk upgrade \
-  && apk add -U bash --no-cache \
+RUN --mount=type=cache,target=/var/cache/apk,sharing=shared \
+    --mount=type=cache,target=/tmp/src-cache,sharing=shared,id=nginx-src \
+    if [ -n "${APK_MIRROR}" ]; then \
+      sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi \
+  && apk update --timeout 60 \
+  && apk upgrade --cache-packages --timeout 60 \
+  && apk add -U --cache-packages --timeout 60 bash \
   && /build.sh
 
 # Use a multi-stage build
-FROM alpine:3.23.3
+FROM public.ecr.aws/docker/library/alpine:3.23.7
+
+ARG APK_MIRROR=""
 
 ENV PATH=$PATH:/usr/local/luajit/bin:/usr/local/nginx/sbin:/usr/local/nginx/bin
 
@@ -33,12 +43,17 @@ COPY --from=builder /usr/lib/libopentelemetry* /usr/local/lib
 COPY --from=builder /opt /opt
 COPY --from=builder /etc/nginx /etc/nginx
 
-RUN apk update \
-  && apk upgrade \
-  && apk add -U --no-cache \
+RUN --mount=type=cache,target=/var/cache/apk,sharing=shared \
+    if [ -n "${APK_MIRROR}" ]; then \
+      sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi \
+  && apk update --timeout 60 \
+  && apk upgrade --cache-packages --timeout 60 \
+  && apk add -U --cache-packages --timeout 60 \
   bash \
   openssl \
   pcre \
+  pcre2 \
   zlib \
   ca-certificates \
   patch \
