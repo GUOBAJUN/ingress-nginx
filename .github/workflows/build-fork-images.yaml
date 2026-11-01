@@ -19,6 +19,7 @@ on:
       - "rootfs/**"
       - "build/**"
       - "GOLANG_VERSION"
+      - ".github/workflows/build-fork-images.yaml"
 
 permissions:
   contents: read
@@ -165,22 +166,22 @@ jobs:
         id: meta
         run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Build controller binaries (${{ matrix.arch }})
         env:
-          CONTROLLER_TAG: ${{ env.CONTROLLER_TAG }}
-        run: |
-          docker run --rm \
-            -v "$PWD:/src" \
-            -w /src \
-            -e CGO_ENABLED=0 \
-            -e GOFLAGS=-buildvcs=false \
-            -e PKG=k8s.io/ingress-nginx \
-            -e ARCH=${{ matrix.arch }} \
-            -e COMMIT_SHA="${GITHUB_SHA}" \
-            -e REPO_INFO="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            -e TAG="${CONTROLLER_TAG}" \
-            public.ecr.aws/docker/library/golang:1.26-alpine3.23 \
-            sh -c 'apk add --no-cache bash >/dev/null && bash build/build.sh'
+          PKG: k8s.io/ingress-nginx
+          ARCH: ${{ matrix.arch }}
+          COMMIT_SHA: ${{ github.sha }}
+          REPO_INFO: ${{ github.server_url }}/${{ github.repository }}
+          TAG: ${{ env.CONTROLLER_TAG }}
+          CGO_ENABLED: "0"
+          GOFLAGS: "-buildvcs=false"
+        run: bash build/build.sh
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
