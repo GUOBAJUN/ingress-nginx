@@ -15,12 +15,10 @@ on:
     branches:
       - upgrade-nginx
     paths:
-      - "images/nginx/**"
+      - "images/nginx/rootfs/**"
       - "rootfs/**"
       - "build/**"
       - "GOLANG_VERSION"
-      - "NGINX_BASE"
-      - ".github/workflows/build-fork-images.yaml"
 
 permissions:
   contents: read
