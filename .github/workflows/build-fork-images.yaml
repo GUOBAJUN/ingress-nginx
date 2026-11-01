@@ -82,7 +82,7 @@ jobs:
             USE_GIT_SUBMODULES=1
             APK_MIRROR=
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx:${{ inputs.nginx_tag || 'v2.3.0-1.30.6' }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx:${{ github.event.inputs.nginx_tag || 'v2.3.0-1.30.6' }}
           cache-from: type=gha,scope=nginx
           cache-to: type=gha,mode=max,scope=nginx
 
@@ -113,7 +113,7 @@ jobs:
 
       - name: Build controller binaries
         env:
-          CONTROLLER_TAG: ${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+          CONTROLLER_TAG: ${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
         run: |
           docker run --rm \
             -v "$PWD:/src" \
@@ -145,13 +145,13 @@ jobs:
           provenance: false
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx@${{ needs.nginx.outputs.digest }}
-            VERSION=${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+            VERSION=${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
             TARGETARCH=amd64
             COMMIT_SHA=${{ github.sha }}
             BUILD_ID=${{ github.run_id }}
             APK_MIRROR=
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/controller:${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/controller:${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
           cache-from: type=gha,scope=controller
           cache-to: type=gha,mode=max,scope=controller
 
