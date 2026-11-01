@@ -16,6 +16,9 @@ FROM public.ecr.aws/docker/library/alpine:3.23.7 AS builder
 # Optional apk mirror, e.g. mirrors.aliyun.com, for restricted networks.
 ARG APK_MIRROR=""
 
+# Use git submodules for ngx_brotli (GitHub Actions) instead of pinned tarballs.
+ARG USE_GIT_SUBMODULES=0
+
 COPY . /
 
 RUN --mount=type=cache,target=/var/cache/apk,sharing=shared \

@@ -1,0 +1,166 @@
+name: Build fork images
+
+on:
+  workflow_dispatch:
+    inputs:
+      nginx_tag:
+        description: "Tag for the nginx image"
+        required: true
+        default: "v2.3.0-1.30.6"
+      controller_tag:
+        description: "Tag for the controller image"
+        required: true
+        default: "v1.15.0-nginx1.30.6"
+  push:
+    branches:
+      - upgrade-nginx
+    paths:
+      - "images/nginx/**"
+      - "rootfs/**"
+      - "build/**"
+      - "GOLANG_VERSION"
+      - "NGINX_BASE"
+      - ".github/workflows/build-fork-images.yaml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: fork-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  nginx:
+    name: Build nginx image
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image prefix
+        id: meta
+        run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      # The nginx build installs ~360 Alpine packages, OTel, ModSecurity and
+      # nginx itself. GitHub's default runner disk is too small.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push nginx
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: images/nginx/rootfs
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            USE_GIT_SUBMODULES=1
+            APK_MIRROR=
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx:${{ inputs.nginx_tag || 'v2.3.0-1.30.6' }}
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,mode=max,scope=nginx
+
+      - name: Write summary
+        run: |
+          {
+            echo "## nginx image"
+            echo ''
+            echo '```'
+            echo "${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx@${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo ''
+            echo "Use this digest for NGINX_BASE after publishing the package."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  controller:
+    name: Build controller image
+    needs: nginx
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image prefix
+        id: meta
+        run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build controller binaries
+        env:
+          CONTROLLER_TAG: ${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            -e CGO_ENABLED=0 \
+            -e GOFLAGS=-buildvcs=false \
+            -e PKG=k8s.io/ingress-nginx \
+            -e ARCH=amd64 \
+            -e COMMIT_SHA="${GITHUB_SHA}" \
+            -e REPO_INFO="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            -e TAG="${CONTROLLER_TAG}" \
+            golang:1.26-alpine3.23 \
+            sh -c 'apk add --no-cache bash >/dev/null && bash build/build.sh'
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push controller
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: rootfs
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/nginx@${{ needs.nginx.outputs.digest }}
+            VERSION=${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+            TARGETARCH=amd64
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_ID=${{ github.run_id }}
+            APK_MIRROR=
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/controller:${{ inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+          cache-from: type=gha,scope=controller
+          cache-to: type=gha,mode=max,scope=controller
+
+      - name: Write summary
+        run: |
+          {
+            echo "## controller image"
+            echo ''
+            echo '```'
+            echo "${{ env.REGISTRY }}/${{ steps.meta.outputs.prefix }}/controller@${{ steps.build.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

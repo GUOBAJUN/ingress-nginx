@@ -350,11 +350,22 @@ cmake -B build -G Ninja -Wno-dev \
 
 # Get Brotli source and deps
 cd "$BUILD_PATH"
-get_src 27a4352dae4ba4922f9f013f3f0d02359aceeef2701872efa42849c3ba05457a \
-        "https://github.com/google/ngx_brotli/archive/53e0fb55f250f48fe80c0ddbf6c0f7103cdbaae1.tar.gz" "ngx_brotli"
+if [ "${USE_GIT_SUBMODULES:-0}" = "1" ]; then
+  echo "Using git submodules for ngx_brotli"
+  git init ngx_brotli
+  cd ngx_brotli
+  git remote add origin https://github.com/google/ngx_brotli.git
+  git fetch --depth=1 origin 53e0fb55f250f48fe80c0ddbf6c0f7103cdbaae1
+  git checkout --detach FETCH_HEAD
+  git submodule update --init --depth=1
+  cd "$BUILD_PATH"
+else
+  get_src 27a4352dae4ba4922f9f013f3f0d02359aceeef2701872efa42849c3ba05457a \
+          "https://github.com/google/ngx_brotli/archive/53e0fb55f250f48fe80c0ddbf6c0f7103cdbaae1.tar.gz" "ngx_brotli"
 
-get_src 98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f \
-        "https://github.com/google/brotli/archive/v1.2.1.tar.gz" "ngx_brotli/deps/brotli"
+  get_src 98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f \
+          "https://github.com/google/brotli/archive/v1.2.1.tar.gz" "ngx_brotli/deps/brotli"
+fi
 
 cd "$BUILD_PATH"
 get_src f12ee3b74f76f77380863fd4f7b0eca9f72e8a5a51389b5e3315b51140a470f8 \
