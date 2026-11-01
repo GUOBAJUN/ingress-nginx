@@ -83,7 +83,14 @@ RUN bash -xeu -c ' \
   # LD_LIBRARY_PATH does not work so below is needed for  opentelemetry/other modules
   # Put libs of newer modules under `/modules_mount/<other>/lib` and add that path below
   # Could get complicated arch specific paths become a need
-  && echo "/lib:/usr/lib:/usr/local/lib:/modules_mount/etc/nginx/modules/otel" > /chroot/etc/ld-musl-x86_64.path
+  && target_arch="${TARGETARCH:-amd64}" \
+  && case "$target_arch" in \
+       amd64) musl_arch=x86_64 ;; \
+       arm64) musl_arch=aarch64 ;; \
+       arm)   musl_arch=armhf ;; \
+       *) echo "unsupported TARGETARCH=${target_arch}" >&2; exit 1 ;; \
+     esac \
+  && echo "/lib:/usr/lib:/usr/local/lib:/modules_mount/etc/nginx/modules/otel" > "/chroot/etc/ld-musl-${musl_arch}.path"
 
 RUN apk add --no-cache libcap \
   && setcap    cap_sys_chroot,cap_net_bind_service=+ep /nginx-ingress-controller \

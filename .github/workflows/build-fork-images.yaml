@@ -28,13 +28,25 @@ concurrency:
   group: fork-images-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  NGINX_TAG: ${{ github.event.inputs.nginx_tag || 'v2.3.0-1.30.6' }}
+  CONTROLLER_TAG: ${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+
 jobs:
   nginx:
-    name: Build nginx image
-    runs-on: ubuntu-latest
+    name: nginx ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,7 +65,7 @@ jobs:
           haskell: true
           large-packages: true
           docker-images: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,39 +77,86 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push nginx
+      - name: Build and push nginx (${{ matrix.arch }})
         id: build
         uses: docker/build-push-action@v6
         with:
           context: images/nginx/rootfs
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           provenance: false
           build-args: |
             USE_GIT_SUBMODULES=1
             APK_MIRROR=
           tags: |
-            ghcr.io/${{ steps.meta.outputs.prefix }}/nginx:${{ github.event.inputs.nginx_tag || 'v2.3.0-1.30.6' }}
-          cache-from: type=gha,scope=nginx
-          cache-to: type=gha,mode=max,scope=nginx
+            ghcr.io/${{ steps.meta.outputs.prefix }}/nginx:${{ env.NGINX_TAG }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=nginx-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=nginx-${{ matrix.arch }}
 
-      - name: Write summary
+  merge-nginx:
+    name: merge nginx index
+    needs: nginx
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.merge.outputs.image }}
+      digest: ${{ steps.merge.outputs.digest }}
+    steps:
+      - name: Compute image prefix
+        id: meta
+        run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge nginx multi-arch index
+        id: merge
+        shell: bash
         run: |
+          set -euo pipefail
+          image="ghcr.io/${{ steps.meta.outputs.prefix }}/nginx:${{ env.NGINX_TAG }}"
+          docker buildx imagetools create -t "$image" \
+            "$image-amd64" \
+            "$image-arm64"
+          docker buildx imagetools inspect "$image" | grep -q 'linux/amd64'
+          docker buildx imagetools inspect "$image" | grep -q 'linux/arm64'
+          digest=$(docker buildx imagetools inspect "$image" | awk '/^Digest:/ {print $2; exit}')
+          test -n "$digest"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
           {
-            echo "## nginx image"
+            echo "## nginx multi-arch image"
             echo ''
             echo '```'
-            echo "ghcr.io/${{ steps.meta.outputs.prefix }}/nginx@${{ steps.build.outputs.digest }}"
+            echo "$image@$digest"
             echo '```'
             echo ''
-            echo "Use this digest for NGINX_BASE after publishing the package."
+            echo "Architectures: linux/amd64, linux/arm64"
+            echo "Use this index digest for NGINX_BASE."
           } >> "$GITHUB_STEP_SUMMARY"
 
   controller:
-    name: Build controller image
-    needs: nginx
-    runs-on: ubuntu-latest
+    name: controller ${{ matrix.arch }}
+    needs: merge-nginx
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,9 +165,9 @@ jobs:
         id: meta
         run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Build controller binaries
+      - name: Build controller binaries (${{ matrix.arch }})
         env:
-          CONTROLLER_TAG: ${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
+          CONTROLLER_TAG: ${{ env.CONTROLLER_TAG }}
         run: |
           docker run --rm \
             -v "$PWD:/src" \
@@ -116,11 +175,11 @@ jobs:
             -e CGO_ENABLED=0 \
             -e GOFLAGS=-buildvcs=false \
             -e PKG=k8s.io/ingress-nginx \
-            -e ARCH=amd64 \
+            -e ARCH=${{ matrix.arch }} \
             -e COMMIT_SHA="${GITHUB_SHA}" \
             -e REPO_INFO="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             -e TAG="${CONTROLLER_TAG}" \
-            golang:1.26-alpine3.23 \
+            public.ecr.aws/docker/library/golang:1.26-alpine3.23 \
             sh -c 'apk add --no-cache bash >/dev/null && bash build/build.sh'
 
       - name: Log in to GitHub Container Registry
@@ -130,32 +189,71 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push controller
+      - name: Build and push controller (${{ matrix.arch }})
         id: build
         uses: docker/build-push-action@v6
         with:
           context: rootfs
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           provenance: false
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ steps.meta.outputs.prefix }}/nginx@${{ needs.nginx.outputs.digest }}
-            VERSION=${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
-            TARGETARCH=amd64
+            BASE_IMAGE=ghcr.io/${{ steps.meta.outputs.prefix }}/nginx@${{ needs.merge-nginx.outputs.digest }}
+            VERSION=${{ env.CONTROLLER_TAG }}
+            TARGETARCH=${{ matrix.arch }}
             COMMIT_SHA=${{ github.sha }}
             BUILD_ID=${{ github.run_id }}
             APK_MIRROR=
           tags: |
-            ghcr.io/${{ steps.meta.outputs.prefix }}/controller:${{ github.event.inputs.controller_tag || 'v1.15.0-nginx1.30.6' }}
-          cache-from: type=gha,scope=controller
-          cache-to: type=gha,mode=max,scope=controller
+            ghcr.io/${{ steps.meta.outputs.prefix }}/controller:${{ env.CONTROLLER_TAG }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=controller-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=controller-${{ matrix.arch }}
 
-      - name: Write summary
+  merge-controller:
+    name: merge controller index
+    needs: controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.merge.outputs.image }}
+      digest: ${{ steps.merge.outputs.digest }}
+    steps:
+      - name: Compute image prefix
+        id: meta
+        run: echo "prefix=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge controller multi-arch index
+        id: merge
+        shell: bash
         run: |
+          set -euo pipefail
+          image="ghcr.io/${{ steps.meta.outputs.prefix }}/controller:${{ env.CONTROLLER_TAG }}"
+          docker buildx imagetools create -t "$image" \
+            "$image-amd64" \
+            "$image-arm64"
+          docker buildx imagetools inspect "$image" | grep -q 'linux/amd64'
+          docker buildx imagetools inspect "$image" | grep -q 'linux/arm64'
+          digest=$(docker buildx imagetools inspect "$image" | awk '/^Digest:/ {print $2; exit}')
+          test -n "$digest"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
           {
-            echo "## controller image"
+            echo "## controller multi-arch image"
             echo ''
             echo '```'
-            echo "ghcr.io/${{ steps.meta.outputs.prefix }}/controller@${{ steps.build.outputs.digest }}"
+            echo "$image@$digest"
             echo '```'
+            echo ''
+            echo "Architectures: linux/amd64, linux/arm64"
+            echo "Use this index digest in the Helm chart."
           } >> "$GITHUB_STEP_SUMMARY"
