@@ -44,8 +44,8 @@ export OWASP_MODSECURITY_CRS_VERSION=v4.30.0
 # Check for recent changes: https://github.com/openresty/lua-nginx-module/compare/v0.10.29...master
 export LUA_NGX_VERSION=v0.10.29
 
-# Check for recent changes: https://github.com/openresty/stream-lua-nginx-module/compare/v0.0.17...master
-export LUA_STREAM_NGX_VERSION=v0.0.17
+# Check for recent changes: https://github.com/openresty/stream-lua-nginx-module/compare/v0.0.17R4...master
+export LUA_STREAM_NGX_VERSION=v0.0.17R4
 
 # Check for recent changes: https://github.com/openresty/lua-upstream-nginx-module/compare/v0.08...master
 export LUA_UPSTREAM_VERSION=v0.08
@@ -249,7 +249,7 @@ get_src bb596d146ad0650014168dda9dc8d07c50a070010044c95ed0d167a9a78e63a1 \
 get_src ca2c2122b909529bf9d1a89e9a5763835a2bd2629def8cb279c550f638f0a78f \
         "https://github.com/openresty/lua-nginx-module/archive/$LUA_NGX_VERSION.tar.gz" "lua-nginx-module"
 
-get_src 09cf5b90904a575b90c16d5cf861b978ef2dbe6d5340e5eb3707e2d2a3ac5cdc \
+get_src 214927614eef96d5b1f26c0adaf94a8fd8c32f73dd17e494c217ca40f60e5910 \
         "https://github.com/openresty/stream-lua-nginx-module/archive/$LUA_STREAM_NGX_VERSION.tar.gz" "stream-lua-nginx-module"
 
 get_src 722620a74a8f75ac154691933d2ae4969b2173061476a3d3bf0de2b9891a0e45 \
