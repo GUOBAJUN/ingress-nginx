@@ -41,8 +41,8 @@ export MODSECURITY_LIB_VERSION=v3.0.17
 # Check for recent changes: https://github.com/coreruleset/coreruleset/compare/v4.30.0...main
 export OWASP_MODSECURITY_CRS_VERSION=v4.30.0
 
-# Check for recent changes: https://github.com/openresty/lua-nginx-module/compare/v0.10.29...master
-export LUA_NGX_VERSION=v0.10.29
+# Check for recent changes: https://github.com/openresty/lua-nginx-module/compare/v0.10.29R2...master
+export LUA_NGX_VERSION=v0.10.29R2
 
 # Check for recent changes: https://github.com/openresty/stream-lua-nginx-module/compare/v0.0.17R4...master
 export LUA_STREAM_NGX_VERSION=v0.0.17R4
@@ -246,7 +246,7 @@ get_src f09851e6309560a8ff3e901548405066c83f1f6ff88aa7171e0763bd9514762b \
 get_src bb596d146ad0650014168dda9dc8d07c50a070010044c95ed0d167a9a78e63a1 \
         "https://github.com/owasp-modsecurity/ModSecurity-nginx/archive/$MODSECURITY_VERSION.tar.gz" "ModSecurity-nginx"
 
-get_src ca2c2122b909529bf9d1a89e9a5763835a2bd2629def8cb279c550f638f0a78f \
+get_src 2435bb65900d556a9175c77548ff0ef4cb507b786f57f7d1c4a7904a7f5063fd \
         "https://github.com/openresty/lua-nginx-module/archive/$LUA_NGX_VERSION.tar.gz" "lua-nginx-module"
 
 get_src 214927614eef96d5b1f26c0adaf94a8fd8c32f73dd17e494c217ca40f60e5910 \
